@@ -20,3 +20,7 @@
 # Go workspace file
 go.work
 go.work.sum
+
+
+# A scratch area for temporary testing
+scratch
