@@ -10,4 +10,13 @@ This is an example of an operator designed using the go operator SDK for deployi
 ## Show my workings
 Please see Exercise Notes for more details.  But the main piece of work was in architecting a metrics system and preparing the details.  This needs to be done before it can be wrapped in an operator.
 
-This was done by building a file with all the required OCP objects in it.  This file can be viewed in [deploy_pang.yml](deploy_pang.yml).
+This was done by building a file with all the required OCP objects in it.  This file can be viewed in [deploy_pang.yml](deploy_pang.yml) and deployed via.
+~~~
+$ oc new-project pang
+$ oc create -f pang.yml
+~~~
+And then destroyed with
+~~~
+$ oc delete -f pang.yml
+$ oc delete project pang
+~~~
