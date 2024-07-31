@@ -1,0 +1,341 @@
+###################
+##  Prometheus
+###################
+
+# Service Account
+apiVersion: v1
+automountServiceAccountToken: false
+kind: ServiceAccount
+metadata:
+  name: prometheus
+  # namespace: pang
+
+# Role
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: pang-alertmanager-edit
+rules:
+- apiGroups:
+  - monitoring.coreos.com
+  resourceNames:
+  - non-existant
+  resources:
+  - alertmanagers
+  verbs:
+  - patch
+
+# Role Binding
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: alertmanager-prometheusk8s
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: pang-alertmanager-edit
+subjects:
+- kind: ServiceAccount
+  name: prometheus
+  # namespace: pang
+  
+
+# Persistent Volume Claim
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: prometheus-pvc
+  # namespace: monitoring
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 10Gi
+
+# Config map
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: prometheus-config
+  # namespace: pang
+data:
+  prometheus.yml: |
+    global:
+      scrape_interval: 15s
+    scrape_configs:
+      - job_name: 'node_exporter'
+        kubernetes_sd_configs:
+          - role: node
+        relabel_configs:
+          - source_labels: [__meta_kubernetes_node_label_kubernetes_io_hostname]
+            target_label: instance
+          - source_labels: [__address__]
+            target_label: __address__
+            replacement: '${1}:19100'
+
+
+# Deployment
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: prometheus
+  # namespace: monitoring
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: prometheus
+  template:
+    metadata:
+      labels:
+        app: prometheus
+    spec:
+      serviceAccount: prometheus
+      serviceAccountName: prometheus
+      containers:
+        - name: prometheus
+          image: prom/prometheus:latest
+          args:
+            - '--config.file=/etc/prometheus/prometheus.yml'
+          volumeMounts:
+            - name: config
+              mountPath: /etc/prometheus
+            - name: prometheus-storage
+              mountPath: /prometheus
+          ports:
+            - containerPort: 9090
+      volumes:
+        - name: config
+          configMap:
+            name: prometheus-config
+        - name: prometheus-storage
+          persistentVolumeClaim:
+            claimName: prometheus-pvc
+
+# Service
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: prometheus
+  # namespace: monitoring
+spec:
+  ports:
+    - port: 9090
+  selector:
+    app: prometheus
+
+# Route
+# ---
+# TODO: Build the route
+
+###################
+##  Node Exporter
+###################
+
+# Security Context Constraint
+---
+allowHostDirVolumePlugin: true
+allowHostIPC: false
+allowHostNetwork: true
+allowHostPID: true
+allowHostPorts: true
+allowPrivilegeEscalation: true
+allowPrivilegedContainer: true
+allowedCapabilities: null
+apiVersion: security.openshift.io/v1
+defaultAddCapabilities: null
+fsGroup:
+  type: RunAsAny
+groups: []
+kind: SecurityContextConstraints
+metadata:
+  annotations:
+    kubernetes.io/description: node-exporter scc is used for the Prometheus node exporter
+  name: pang-node-exporter
+priority: null
+readOnlyRootFilesystem: false
+requiredDropCapabilities: null
+runAsUser:
+  type: RunAsAny
+seLinuxContext:
+  type: RunAsAny
+supplementalGroups:
+  type: RunAsAny
+users: []
+volumes:
+- '*'
+
+
+# Cluster Role
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: pang-node-exporter
+rules:
+- apiGroups:
+  - authentication.k8s.io
+  resources:
+  - tokenreviews
+  verbs:
+  - create
+- apiGroups:
+  - authorization.k8s.io
+  resources:
+  - subjectaccessreviews
+  verbs:
+  - create
+- apiGroups:
+  - security.openshift.io
+  resourceNames:
+  - pang-node-exporter
+    privileged
+  resources:
+  - securitycontextconstraints
+  verbs:
+  - use
+
+# Cluster Role Bindings
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: pang-node-exporter
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: pang-node-exporter
+subjects:
+- kind: ServiceAccount
+  name: node-exporter
+  namespace: pang
+
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: node-exporter-privileged-binding
+roleRef:
+  kind: ClusterRole
+  name: system:openshift:scc:privileged
+  apiGroup: rbac.authorization.k8s.io
+subjects:
+- kind: ServiceAccount
+  name: node-exporter
+  namespace: pang
+
+# Service Account
+---
+apiVersion: v1
+automountServiceAccountToken: false
+kind: ServiceAccount
+metadata:
+  name: node-exporter
+
+# Daemonset
+---
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: node-exporter
+  # namespace: pang
+  labels:
+    app: node-exporter
+spec:
+  selector:
+    matchLabels:
+      app: node-exporter
+  template:
+    metadata:
+      labels:
+        app: node-exporter
+    spec:
+      serviceAccount: node-exporter
+      serviceAccountName: node-exporter
+      containers:
+      - name: node-exporter
+        image: quay.io/prometheus/node-exporter:latest
+      
+      
+        args:
+        - --web.listen-address=127.0.0.1:19100
+        - --path.sysfs=/host/sys
+        - --path.rootfs=/host/root
+        - --collector.filesystem.mount-points-exclude=^/(dev|proc|sys|run/k3s/containerd/.+|var/lib/docker/.+|var/lib/kubelet/pods/.+)($|/)
+        - --collector.netclass.ignored-devices=^(veth.*|[a-f0-9]{15}|enP.*|ovn-k8s-mp[0-9]*|br-ex|br-int|br-ext|br[0-9]*|tun[0-9]*|cali[a-f0-9]*)$
+        - --collector.netdev.device-exclude=^(veth.*|[a-f0-9]{15}|enP.*|ovn-k8s-mp[0-9]*|br-ex|br-int|br-ext|br[0-9]*|tun[0-9]*|cali[a-f0-9]*)$
+        - --collector.cpu.info
+        - --no-collector.cpufreq
+        - --no-collector.tcpstat
+        - --collector.netdev
+        - --collector.netclass
+        - --collector.netclass.netlink
+        - --no-collector.buddyinfo
+        - --no-collector.mountstats
+        - --no-collector.ksmd
+        - --no-collector.processes
+        - --no-collector.systemd
+        command:
+        # - /bin/sh
+        # - -c
+        # - |
+        #   export GOMAXPROCS=4
+        #   # We don't take CPU affinity into account as the container doesn't have integer CPU requests.
+        #   # In case of error, fallback to the default value.
+        #   NUM_CPUS=$(grep -c '^processor' "/proc/cpuinfo" 2>/dev/null || echo "0")
+        #   if [ "$NUM_CPUS" -lt "$GOMAXPROCS" ]; then
+        #     export GOMAXPROCS="$NUM_CPUS"
+        #   fi
+        #   echo "ts=$(date --iso-8601=seconds) num_cpus=$NUM_CPUS gomaxprocs=$GOMAXPROCS"
+        #   exec /bin/node_exporter "$0" "$@"
+
+        ports:
+          - name: metrics
+            containerPort: 19100
+
+
+        volumeMounts:
+        - name: host-root
+          mountPath: /host/root
+          readOnly: true
+        - name: sys
+          mountPath: /host/sys
+          readOnly: true
+        securityContext:
+          privileged: true
+      volumes:
+      - name: host-root
+        hostPath:
+          path: /
+          type: Directory
+      - name: sys
+        hostPath:
+          path: /sys
+          type: Directory
+      # - name: proc
+      #   hostPath:
+      #     path: /proc
+      #     type: Directory
+      hostNetwork: true
+      hostPID: true
+      restartPolicy: Always
+
+# Service
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: node-exporter
+  # namespace: monitoring
+spec:
+  ports:
+    - port: 19100
+  selector:
+    app: node-exporter
