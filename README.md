@@ -2,7 +2,7 @@
 PANG (Prometheus AlertManager NodeEporter Grafana) Stack
 
 ## Design Decisions
-This is an example of an operator designed using the go operator SDK for deploying a simplified monitoring stack. [Design decisions were documented here](doc/design_decision.md)
+This is an example of an operator designed using the go operator SDK for deploying a simplified monitoring stack. [Design decisions were documented here](doc/design_decisions.md)
 
 ## Exercise Notes
 [The development journey is documented here](doc/build_journey.md)

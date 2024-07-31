@@ -21,8 +21,8 @@ The plan is to
  - Build a lab cluster
  - Start by building the OCP objects for Prometheus
 	 - Initially, a deployment object for the image
-	 - It wouldn't start because the RBAC were the default secured role in the default Service Account
-	 - Prometheus needs to be able to ask questions of the cluster, like how many and where are all your nodes so it can find and identify all the node_exporters to scape metrics.  It needs to do the same for all the other exporters that are installed on the system
+	 - It wouldn't start because the RBAC was the default secured role in the default Service Account
+	 - Prometheus needs to be able to ask questions of the cluster, like how many and where are all your nodes so it can find and identify all the node_exporters to scrape metrics.  It needs to do the same for all the other exporters that are installed on the system
 	 - I chose to steal the Role definition from the Prometheus image running in the Observability Operator
 	 - I then needed to create a new Service Account and a Role Binding
 	 - I then needed to add persistent storage so the stored data would survive a pod restart.
@@ -35,8 +35,8 @@ The plan is to
 		 - Trying to replicate the SCC failed. So, due to time constraints and this operator will never be deployed in anger, I decided to substitute the privileged SCC. This worked as expected
 	 - Finally, the new exporter competes to access port 9100 with the existing exporter. This occurs because both the new and the old exporters run with a privileged host network (hostNetwork: true) so they are not in segmented pod networks where they can have the same port. This is so they can access the network metrics of the node.
 		 - Moving the new exporter to 19100 was relatively easy once the issue was discovered
-	 - This had a knock-on effect that Prometheus was now scraping the wrong ports  and this pronbably is the reason why Prometheus was not scraping metrics 
-		 - Changing the port number should be more simple than this, but and based on checks this did not work
+	 - This had a knock-on effect that Prometheus was now scraping the wrong ports  and this probably is the reason why Prometheus was not scraping metrics 
+		 - Changing the port number should be simpler than this, but based on checks this did not work
 ~~~
  scrape_configs:
 - job_name: 'node_exporter'
@@ -53,7 +53,7 @@ relabel_configs:
 At this point, I felt like I was running out of time to complete the exercise.  And so, I chose to move on the next step as I had two pods that were running, and I might as well make an appropriator out of what I had.  
 
 ### Use the OpenShift Operator SDK to create an operator
-I didn't get ver far with this.  Even though my research indicated that this would be possible on an MBP running on silicone, this does not appear to be the case.
+I didn't get ver far with this.  Even though my research indicated that this would be possible on an MBP running on silicone, [this does not appear to be the case](https://docs.openshift.com/container-platform/4.14/operators/operator_sdk/osdk-installing-cli.html#osdk-installing-cli:~:text=For%20the%20amd64%20and%20arm64%20architectures%2C%20navigate%20to%20the%20OpenShift%20mirror%20site%20for%20the%20amd64%20architecture%20and%20OpenShift%20mirror%20site%20for%20the%20arm64%20architecture%20respectively.).
 
 > 1.  For the  `amd64`  and  `arm64`  architectures, navigate to the  [OpenShift mirror site for the  `amd64`  architecture](https://mirror.openshift.com/pub/openshift-v4/x86_64/clients/operator-sdk/)  and  [OpenShift mirror site for the  `arm64`  architecture](https://mirror.openshift.com/pub/openshift-v4/arm64/clients/operator-sdk/)  respectively.
 
